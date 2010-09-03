@@ -1,4 +1,4 @@
-USING: accessors arrays assocs byte-arrays combinators
+USING: accessors arrays assocs byte-arrays combinators math math.parser
 combinators.short-circuit io io.encodings io.streams.string
 kernel namespaces peg peg.ebnf rdf rdf.util sequences strings ;
 IN: rdf.ntriple
@@ -7,48 +7,35 @@ SINGLETON: ntriple
 
 <PRIVATE
 
-: whitespace? ( char -- ? )
-    { 32 9 } member? ; inline
-
 : ?skip-whitespace ( -- char )
     read1 dup whitespace?
     [ drop ?skip-whitespace ] [  ] if ; inline recursive
 
-: cs-read-until ( sep -- string )
-    input-stream get character-string re-decode
-    stream-read-until drop ;
-
-: read-uri ( -- uri )
-    ">" cs-read-until >string <uriref> ;
-
-: read-bnode ( -- bnode )
-    read1 drop " " cs-read-until >string <bnode> ;
-
 : read-literal ( -- literal )
-    "\"" cs-read-until >string
+    "\"" cs-read-until drop >string
     read1
     {
-        { [ dup CHAR: @ = ] [ drop " " cs-read-until >string <lang-literal> ] }
-        { [ dup CHAR: ^ = ] [ drop 2 read drop read-uri <type-literal> ] }
+        { [ dup CHAR: @ = ] [ drop " ." cs-read-until drop >string <lang-literal> ] }
+        { [ dup CHAR: ^ = ] [ drop 2 read drop read-uriref <type-literal> ] }
         [ drop <literal> ]
     } cond ;
 
 : read-subject ( -- subject )
     ?skip-whitespace
     {
-        { [ dup CHAR: < = ] [ drop read-uri ] }
+        { [ dup CHAR: < = ] [ drop read-uriref ] }
         { [ dup CHAR: _ = ] [ drop read-bnode ] }
         [ drop f ]
     } cond ;
 
 : read-predicate ( -- predicate )
     ?skip-whitespace CHAR: < =
-    [ read-uri ] [ f ] if ;
+    [ read-uriref ] [ f ] if ;
 
 : read-object ( -- object )
     ?skip-whitespace
     {
-        { [ dup CHAR: < = ] [ drop read-uri ] }
+        { [ dup CHAR: < = ] [ drop read-uriref ] }
         { [ dup CHAR: _ = ] [ drop read-bnode ] }
         { [ dup CHAR: " = ] [ drop read-literal ] }
         [ drop f ]
@@ -101,6 +88,9 @@ M: literal write-ntriple-part ( object -- )
     ] bi
     CHAR: space write1 ;
 
+M: number write-ntriple-part ( object -- )
+    number>string write-string CHAR: space write1 ;
+
 : write-triple ( object predicate subject -- )
     [ write-ntriple-part ] tri@
     B{ CHAR: space CHAR: . CHAR: \n } write ; inline 
@@ -112,6 +102,10 @@ M: ntriple import-triples ( string graph format -- graph )
     [ add-triple-seq ] each ;
 
 M: ntriple serialize-graph ( graph format -- )
-    drop objects>>
-    [ [ [ [ 2dup ] dip write-triple ] each drop ] assoc-each drop ] assoc-each ;
+    drop spo>>
+    [ [ keys [ [ 2dup ] dip write-triple ] each drop ] assoc-each drop ] assoc-each ;
 
+M: ntriple serialize-triples ( seq format -- )
+    drop [ [ s>> ] [ p>> ] [ o>> ] tri write-triple ] each ;
+
+M: ntriple mime-type drop "text/plain" ;
