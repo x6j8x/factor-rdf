@@ -1,8 +1,9 @@
 USING: accessors arrays assocs combinators fry generalizations
 hashtables http http.client io.streams.string kernel locals
-macros math.parser memoize namespaces rdf.helper sequences
+macros math math.parser memoize namespaces rdf.helper sequences
 sequences.private slots splitting strings ;
 FROM: vocabs.loader => require ;
+FROM: rdf.ntriple => ntriple ;
 IN: rdf
 
 TUPLE: subject { predicates hashtable } ;
@@ -95,12 +96,54 @@ TUPLE: graph
 
 TUPLE: triple s p o ;
 
+M: triple like ( seq exemplar -- newseq )
+    over triple? [ drop clone ] [
+        clone [ [ 0 ] dip copy ] keep
+    ] if ;
+
+M: triple new-sequence ( length triple -- triple )
+    2drop triple new ;
+
+M: triple nth-unsafe ( n triple -- object )
+    {
+        { [ over 0 = ] [ nip s>> ] }
+        { [ over 1 = ] [ nip p>> ] }
+        { [ over 2 = ] [ nip o>> ] }
+    } cond ;
+
+M: triple nth ( n triple -- object )
+    over 2 > [ bounds-error ] when
+    nth-unsafe ;
+
+M: triple set-nth-unsafe ( elt n triple -- )
+    {
+        { [ over 0 = ] [ nip swap >>s drop ] }
+        { [ over 1 = ] [ nip swap >>p drop ] }
+        { [ over 2 = ] [ nip swap >>o drop ] }    
+    } cond ;
+
+M: triple set-nth ( elt n triple -- )
+    over 2 > [ bounds-error ] when
+    set-nth-unsafe ;
+
+M: triple length ( triple -- n )
+    drop 3 ;
+
+M: triple lengthen ( n seq -- )
+    over 3 > [ bounds-error ] when 2drop ;
+
 : <triple> ( s p o -- triple )
     [ triple new ] 3dip 
     [ >>s ] [ >>p ] [ >>o ] tri* ; inline
 
+<PRIVATE
+
+CONSTANT: triple-exemplar T{ triple f f f f }
+
+PRIVATE>
+
 : seq>triple ( seq -- triple )
-    first3 <triple> ; inline
+    triple-exemplar like ; inline
 
 : <graph> ( -- graph )
     graph new
@@ -122,14 +165,19 @@ GENERIC: serialize-triples ( seq format -- )
 : graph>string ( graph format -- str )
     [ serialize-graph ] with-string-writer ;
 
-: triples>string ( seq format -- str )
-    [ serialize-triples ] with-string-writer ;
+FROM: rdf.ntriple => ntriple ;
+
+: triples>string ( seq -- str )
+    [ ntriple serialize-triples ] with-string-writer ;
 
 <PRIVATE
 
 MACRO: >index ( pos-string -- )
-    [ reverse [triple-extractor] [insert-prepare] ]
-    [ [index-inserter] ] bi compose ;
+    [
+        [ [ dup ] ] dip
+        [triple-extractor] compose
+        [insert-prepare]
+    ] [ [index-inserter] ] bi compose ;
 
 PRIVATE>
 
@@ -157,6 +205,14 @@ PRIVATE>
         swap [ <graph> ] dip base-import-triples
     ] [ "http error" throw ] if ;
 
+: merge-graphs ( g1 g2 -- graph )
+    [ <graph> ] 2dip
+    {
+        [ [ spo>> ] bi@ assoc-union >>spo ]
+        [ [ pos>> ] bi@ assoc-union >>pos ]
+        [ [ osp>> ] bi@ assoc-union >>osp ]    
+    } 2cleave ;
+
 :: graph>triples ( graph -- seq )
     V{ } clone :> acc
     graph spo>>
@@ -165,11 +221,11 @@ PRIVATE>
 
 <PRIVATE
 
-MACRO:: find-triples ( pos-string -- )
-    pos-string [triple-constructor] :> tc
-    pos-string reader-word '[ _ execute ] 
-    pos-string [triple-extractor] '[ _ _ bi* ]
-    tc [locator] compose ;
+MACRO: find-triples ( pos-string -- )
+    [ [ swap ] ] dip
+    [ [triple-extractor] ]
+    [ reader-word '[ _ execute ] ] bi
+    '[ @ _ _ bi* ] [locator] compose ;
 
 PRIVATE>
 
