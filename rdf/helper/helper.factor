@@ -1,5 +1,5 @@
 USING: accessors arrays assocs fry generalizations kernel
-locals namespaces rdf sequences slots strings ;
+locals namespaces sequences slots strings ;
 IN: rdf.helper 
 
 : ensure-ht ( ht/f -- ht )

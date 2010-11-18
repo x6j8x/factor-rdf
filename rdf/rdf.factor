@@ -3,7 +3,6 @@ hashtables http http.client io.streams.string kernel locals
 macros math math.parser memoize namespaces rdf.helper sequences
 sequences.private slots splitting strings ;
 FROM: vocabs.loader => require ;
-FROM: rdf.ntriple => ntriple ;
 IN: rdf
 
 TUPLE: subject { predicates hashtable } ;
@@ -165,10 +164,8 @@ GENERIC: serialize-triples ( seq format -- )
 : graph>string ( graph format -- str )
     [ serialize-graph ] with-string-writer ;
 
-FROM: rdf.ntriple => ntriple ;
-
-: triples>string ( seq -- str )
-    [ ntriple serialize-triples ] with-string-writer ;
+: triples>string ( seq format -- str )
+    [ serialize-triples ] with-string-writer ;
 
 <PRIVATE
 
@@ -204,6 +201,9 @@ PRIVATE>
         [ <uriref> ns>> uri>> ] 2dip
         swap [ <graph> ] dip base-import-triples
     ] [ "http error" throw ] if ;
+
+: load-graph-deep ( url format depth -- graph )
+    2over load-graph [ 3drop ] dip ;
 
 : merge-graphs ( g1 g2 -- graph )
     [ <graph> ] 2dip
